@@ -4,7 +4,7 @@ import { load, all } from '../../shared/dom.js';
 import { resolveEmbed } from '../../shared/extractors/index.js';
 import { bySlug, followRedirect, pickSeries, findEpisodeCandidates } from './common.js';
 
-const BASES = ['https://serienstream.to', 'https://serienstream.sx'];
+const BASES = ['https://serienstream.to', 'https://serienstream.sx', 'https://s.to'];
 
 async function getStreams(tmdbId, mediaType, season, episode) {
     if (mediaType !== 'tv' || season == null || episode == null) return [];

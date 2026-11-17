@@ -805,7 +805,7 @@ function bySlug(base, prefix, meta) {
 }
 
 // src/serienstream/index.js
-var BASES = ["https://serienstream.to", "https://serienstream.sx"];
+var BASES = ["https://serienstream.to", "https://serienstream.sx", "https://s.to"];
 function getStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     if (mediaType !== "tv" || season == null || episode == null) return [];

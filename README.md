@@ -30,6 +30,7 @@ https://heisenbergvx2-maker.github.io/nuvio/manifest.json
 | Netzkino | Filme | Suche der Netzkino-API ist lückenhaft |
 | FilmFrei24, Filmo, FlixiTV, KellerKino, Megakino, FilmPalast, HDFilme, Moflix, Huhu | Filme (teils Serien) | über Hoster wie VOE, Vidara, VidSonic, FireStream, MixDrop … |
 | KinoKing | Serien | Filme sind abgeschaltet: die Filmseite braucht 12–20 s pro Abruf |
+| Kinoger | Filme | über VOE, VidHide, VidStack |
 | Serienstream, Aniworld | Serien / Anime | s.to zeigt nach ~10 Links pro IP ein Captcha, dann fehlen weitere Links |
 
 
