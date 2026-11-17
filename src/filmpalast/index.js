@@ -1,0 +1,53 @@
+import { getText, provider } from '../../shared/http.js';
+import { getMeta } from '../../shared/tmdb.js';
+import { pickBest } from '../../shared/match.js';
+import { load, all } from '../../shared/dom.js';
+import { resolveEmbed } from '../../shared/extractors/index.js';
+
+const BASE = 'https://filmpalast.to';
+const pad = n => String(n).padStart(2, '0');
+
+// series are listed as one entry per episode, titled "<Show> S01E02"
+async function findPage(meta, season, episode) {
+    const tag = meta.type === 'tv' ? ` S${pad(season)}E${pad(episode)}` : '';
+    for (const t of meta.titles) {
+        const $ = load(await getText(`${BASE}/search/title/${encodeURIComponent(t + tag)}`));
+        const items = all($, '#content .glowliste h2 a').map(a => {
+            const label = String(a.attr('title') || a.text() || '');
+            const href = String(a.attr('href') || '');
+            const m = label.match(/^(.*) S(\d+)E(\d+)$/);
+            return { title: m ? m[1] : label, s: m && +m[2], e: m && +m[3], url: href ? 'https:' + href.replace(/^https?:/, '') : '' };
+        }).filter(i => i.url && (tag ? i.s === season && i.e === episode : !i.s));
+        const hit = pickBest(items, meta);
+        if (hit) return hit;
+    }
+    return null;
+}
+
+async function getStreams(tmdbId, mediaType, season, episode) {
+    try {
+        const meta = await getMeta(tmdbId, mediaType);
+        const hit = await findPage(meta, season, episode);
+        if (!hit) return [];
+        const $ = load(await getText(hit.url));
+        const mirrors = all($, '#content ul.currentStreamLinks').map(ul => {
+            const a = $('a.iconPlay', ul).first();
+            return { host: $('.hostName', ul).text().trim(), link: a.attr('data-player-url') || a.attr('href') };
+        }).filter(m => /^https?:/.test(m.link || ''));
+        const streams = await Promise.all(mirrors.map(m => resolveEmbed(m.link, BASE + '/').then(r => r.map(s => ({
+            name: 'FilmPalast',
+            title: `${m.host || s.host} · Deutsch${s.quality !== 'auto' ? ' · ' + s.quality : ''}`,
+            url: s.url,
+            quality: s.quality,
+            headers: s.headers,
+            mediaTitle: hit.title,
+            year: meta.year,
+        })))));
+        return [].concat(...streams);
+    } catch (e) {
+        console.error(`[FilmPalast] ${e.message}`);
+    }
+    return [];
+}
+
+module.exports = provider(getStreams);
