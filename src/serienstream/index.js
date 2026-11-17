@@ -1,4 +1,4 @@
-import { getText, provider } from '../../shared/http.js';
+import { getText, getTextCached, provider } from '../../shared/http.js';
 import { getMeta } from '../../shared/tmdb.js';
 import { load, all } from '../../shared/dom.js';
 import { resolveEmbed } from '../../shared/extractors/index.js';
@@ -15,7 +15,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             try {
                 let series = null;
                 for (const q of meta.titles) {
-                    const $ = load(await getText(`${BASE}/suche?term=${encodeURIComponent(q)}&tab=shows`, { headers: { Referer: `${BASE}/suche` } }));
+                    const $ = load(await getTextCached(`${BASE}/suche?term=${encodeURIComponent(q)}&tab=shows`, { headers: { Referer: `${BASE}/suche` } }));
                     const items = all($, 'a.show-cover').map(a => ({ link: a.attr('href'), title: $('img', a).attr('alt') }));
                     if ((series = await pickSeries(items, meta, BASE))) break;
                 }

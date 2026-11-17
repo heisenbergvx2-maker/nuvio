@@ -97,6 +97,23 @@ function matchEpisodeTitle(rowDe, rowOrig, targetTitles) {
   return best;
 }
 
+// shared/cache.js
+var MAX_ENTRIES = 200;
+var entries = /* @__PURE__ */ new Map();
+function cached(key, ttlMs, fn) {
+  const now = Date.now();
+  const hit = entries.get(key);
+  if (hit && now - hit.at < ttlMs) return hit.value;
+  if (entries.size >= MAX_ENTRIES) entries.delete(entries.keys().next().value);
+  const value = Promise.resolve().then(fn);
+  entries.set(key, { at: now, value });
+  value.catch(() => {
+    const e = entries.get(key);
+    if (e && e.value === value) entries.delete(key);
+  });
+  return value;
+}
+
 // shared/http.js
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 var DEADLINE_MS = 25e3;
@@ -164,12 +181,18 @@ function resolution(q) {
 }
 function qualityOf(s) {
   if (s.quality && s.quality !== "auto") return String(s.quality);
-  const m = String(s.url || "").match(/[^\d](\d{3,4})p/i);
+  const m = `${s.url || ""} ${fileNames[s.url] || ""}`.match(/[^\d](\d{3,4})p/i);
   if (m) return m[1] + "p";
   if (/\.m3u8|\/hls|master/i.test(s.url || "")) return "HLS";
   if (/\.mp4/i.test(s.url || "")) return "MP4";
   return "auto";
 }
+var AUDIO = [[/dd[p]?[\s._-]?5[\s._-]?1|dolby|ac3|eac3|dts|\b5\.1\b/i, 2], [/aac|\b2\.0\b|stereo/i, 1]];
+var audioRank = (url, title) => {
+  const hay = fileNames[url] || title || "";
+  const hit = AUDIO.find(([re]) => re.test(hay));
+  return hit ? hit[1] : 0;
+};
 var qualityRank = (q) => resolution(q) || (/hls|m3u8|auto/i.test(q) ? 800 : 0);
 function decorate(s) {
   const url = safeUrl(s.url);
@@ -224,10 +247,10 @@ function provider(getStreams2) {
           const d = decorate(s);
           if (!d || seen[d.stream.url]) return;
           seen[d.stream.url] = true;
-          ranked.push({ lang: d.lang, rank: qualityRank(d.stream.quality), i, stream: d.stream });
+          ranked.push({ lang: d.lang, rank: qualityRank(d.stream.quality), audio: audioRank(d.stream.url, d.stream.title), i, stream: d.stream });
         });
         const langRank = (lang) => lang === "Deutsch" ? 0 : /dt\. UT|OmU/.test(lang) ? 1 : 2;
-        ranked.sort((a, b) => langRank(a.lang) - langRank(b.lang) || b.rank - a.rank || a.i - b.i);
+        ranked.sort((a, b) => langRank(a.lang) - langRank(b.lang) || b.rank - a.rank || b.audio - a.audio || a.i - b.i);
         return ranked.map((r) => r.stream);
       });
     }
@@ -245,6 +268,7 @@ function request(_0) {
 var getText = (url, opts) => __async(null, null, function* () {
   return (yield request(url, opts)).text();
 });
+var getTextCached = (url, opts, ttl = 3e5) => cached(`text:${url}`, ttl, () => getText(url, opts));
 var getJson = (url, opts) => __async(null, null, function* () {
   return JSON.parse(yield getText(url, opts));
 });
@@ -258,23 +282,6 @@ var postForm = (url, form, opts = {}) => getText(url, Object.assign({}, opts, {
   body: Object.keys(form).map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(form[k])).join("&"),
   headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, opts.headers)
 }));
-
-// shared/cache.js
-var MAX_ENTRIES = 200;
-var entries = /* @__PURE__ */ new Map();
-function cached(key, ttlMs, fn) {
-  const now = Date.now();
-  const hit = entries.get(key);
-  if (hit && now - hit.at < ttlMs) return hit.value;
-  if (entries.size >= MAX_ENTRIES) entries.delete(entries.keys().next().value);
-  const value = Promise.resolve().then(fn);
-  entries.set(key, { at: now, value });
-  value.catch(() => {
-    const e = entries.get(key);
-    if (e && e.value === value) entries.delete(key);
-  });
-  return value;
-}
 
 // shared/tmdb.js
 var TTL = 10 * 60 * 1e3;
@@ -808,7 +815,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         try {
           let series = null;
           for (const q of meta.titles) {
-            const $ = load(yield getText(`${BASE}/suche?term=${encodeURIComponent(q)}&tab=shows`, { headers: { Referer: `${BASE}/suche` } }));
+            const $ = load(yield getTextCached(`${BASE}/suche?term=${encodeURIComponent(q)}&tab=shows`, { headers: { Referer: `${BASE}/suche` } }));
             const items = all($, "a.show-cover").map((a) => ({ link: a.attr("href"), title: $("img", a).attr("alt") }));
             if (series = yield pickSeries(items, meta, BASE)) break;
           }

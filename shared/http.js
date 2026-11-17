@@ -1,5 +1,6 @@
 import { ctx } from './context.js';
 import { sameYear } from './match.js';
+import { cached } from './cache.js';
 
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -70,14 +71,23 @@ function resolution(q) {
 }
 
 // 'auto' is what a master playlist reports: it adapts to the connection, so it must not be sorted below a fixed 720p.
+// The hoster's file name (VOE titles carry "…1080p…AC3…") is the most reliable hint for both resolution and audio.
 function qualityOf(s) {
     if (s.quality && s.quality !== 'auto') return String(s.quality);
-    const m = String(s.url || '').match(/[^\d](\d{3,4})p/i);
+    const m = `${s.url || ''} ${fileNames[s.url] || ''}`.match(/[^\d](\d{3,4})p/i);
     if (m) return m[1] + 'p';
     if (/\.m3u8|\/hls|master/i.test(s.url || '')) return 'HLS';
     if (/\.mp4/i.test(s.url || '')) return 'MP4';
     return 'auto';
 }
+
+// AC3/E-AC3/5.1 sounds better than the usual AAC stereo, so it wins at the same resolution.
+const AUDIO = [[/dd[p]?[\s._-]?5[\s._-]?1|dolby|ac3|eac3|dts|\b5\.1\b/i, 2], [/aac|\b2\.0\b|stereo/i, 1]];
+const audioRank = (url, title) => {
+    const hay = fileNames[url] || title || '';
+    const hit = AUDIO.find(([re]) => re.test(hay));
+    return hit ? hit[1] : 0;
+};
 
 const qualityRank = q => resolution(q) || (/hls|m3u8|auto/i.test(q) ? 800 : 0);
 
@@ -140,10 +150,10 @@ export function provider(getStreams) {
                 const d = decorate(s);
                 if (!d || seen[d.stream.url]) return;
                 seen[d.stream.url] = true;
-                ranked.push({ lang: d.lang, rank: qualityRank(d.stream.quality), i, stream: d.stream });
+                ranked.push({ lang: d.lang, rank: qualityRank(d.stream.quality), audio: audioRank(d.stream.url, d.stream.title), i, stream: d.stream });
             });
             const langRank = lang => (lang === 'Deutsch' ? 0 : /dt\. UT|OmU/.test(lang) ? 1 : 2);
-            ranked.sort((a, b) => langRank(a.lang) - langRank(b.lang) || b.rank - a.rank || a.i - b.i);
+            ranked.sort((a, b) => langRank(a.lang) - langRank(b.lang) || b.rank - a.rank || b.audio - a.audio || a.i - b.i);
             return ranked.map(r => r.stream);
         },
     };
@@ -158,6 +168,12 @@ export async function request(url, opts = {}) {
 }
 
 export const getText = async (url, opts) => (await request(url, opts)).text();
+
+// search results and season pages barely change within a session: one request per title/episode is enough
+export const getTextCached = (url, opts, ttl = 300000) => cached(`text:${url}`, ttl, () => getText(url, opts));
+
+// how much of the 25 s budget is left; hoster resolution uses it to stop starting new requests
+export const timeLeft = () => (deadline === Infinity ? Infinity : deadline - Date.now());
 
 export const getJson = async (url, opts) => JSON.parse(await getText(url, opts));
 

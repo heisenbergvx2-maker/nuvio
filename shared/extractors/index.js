@@ -1,5 +1,5 @@
 import * as h from './hosters.js';
-import { mapLimit, safeUrl } from '../http.js';
+import { mapLimit, safeUrl, timeLeft } from '../http.js';
 
 // host (without www.) -> decoder; mirrors from GermanProviders' extractor registrations + CloudStream core
 const HOSTS = [
@@ -46,6 +46,19 @@ export async function resolveEmbed(url, referer) {
     }
 }
 
-// bounded, so a page with 15 mirrors does not fire 15 requests at once (Nuvio TV serialises them anyway)
-export const resolveAll = (urls, referer) => mapLimit(urls || [], 6, u => resolveEmbed(u, referer))
-    .then(lists => [].concat.apply([], lists.filter(Boolean)));
+// roughly how fast a hoster answers, quickest first: VOE's CDN is usually the fastest and most 1080p source,
+// Filemoon/MixDrop the slowest. Used to resolve the promising mirrors first instead of in page order.
+const SPEED = ['voe', 'vidmoly', 'streamtape', 'vidoza', 'streamwish', 'vidhide', 'lulustream', 'filemoon', 'mixdrop'];
+export function hostRank(url) {
+    const host = hostOf(url);
+    for (let i = 0; i < SPEED.length; i++) if (host.includes(SPEED[i])) return i;
+    return SPEED.length;
+}
+
+// bounded, quickest hosters first; when the 25 s budget is nearly used up no further mirror is started, so one dead
+// hoster cannot hold the whole answer until Nuvio's timeout
+export const resolveAll = (urls, referer) => {
+    const list = (urls || []).filter(Boolean).slice().sort((a, b) => hostRank(a) - hostRank(b));
+    return mapLimit(list, 5, u => (timeLeft() > 7000 ? resolveEmbed(u, referer) : []))
+        .then(lists => [].concat.apply([], lists.filter(Boolean)));
+};

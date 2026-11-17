@@ -1,4 +1,5 @@
 import { getText, postForm, provider } from '../../shared/http.js';
+import { cached } from '../../shared/cache.js';
 import { getMeta } from '../../shared/tmdb.js';
 import { norm } from '../../shared/match.js';
 import { load, all } from '../../shared/dom.js';
@@ -14,7 +15,7 @@ const ORDER = { 1: 0, 3: 1, 2: 2 };
 const clean = s => String(s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#0?39;/g, "'").replace(/&quot;/g, '"').trim();
 
 async function search(q) {
-    const text = await postForm(`${BASE}/ajax/search`, { keyword: q }, { headers: { 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/search` } });
+    const text = await cached(`ani:search:${q}`, 300000, () => postForm(`${BASE}/ajax/search`, { keyword: q }, { headers: { 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/search` } }));
     // empty body when nothing matches
     return (JSON.parse(text || '[]') || []).map(i => ({ link: i.link, title: clean(i.title) }));
 }

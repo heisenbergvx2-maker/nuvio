@@ -43,7 +43,8 @@ https://heisenbergvx2-maker.github.io/nuvio/manifest.json
   abweichende Zählweisen aus (Columbo: die beiden Pilotfilme sind bei s.to Folge 1–2; Black Clover: TMDB 4 Staffeln,
   AniWorld 5; Re:Zero: eine TMDB-Staffel mit absoluter Nummerierung).
 - **Anzeige:** Im Stream-Namen stehen Titel und Jahr, damit man vor dem Start sieht, was läuft. Innerhalb einer Sprache
-  kommt die beste Auflösung zuerst, HLS-Master gelten als adaptiv (beste verfügbare Qualität).
+  kommt die beste Auflösung zuerst, bei gleicher Auflösung die bessere Tonspur (AC3/5.1 vor AAC), danach die
+  schnellsten Hoster. HLS-Master gelten als adaptiv (beste verfügbare Qualität).
 - **Tempo:** TMDB-Antworten und Staffelseiten werden für die Dauer eines Abrufs zwischengespeichert, Staffelseiten
   parallel geladen und Hoster-Auflösungen begrenzt parallelisiert. Nach 25 s startet kein neuer Request mehr
   (Nuvio bricht nach 60 s ab, iOS stürzt bei noch laufenden Requests ab).

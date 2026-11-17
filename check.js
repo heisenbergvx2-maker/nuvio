@@ -78,9 +78,7 @@ assert.deepStrictEqual(safeHeaders({ 'X-Ok': '1', 'Bad\nKey': 'x', 'Y-Drop': 'a\
     assert.deepStrictEqual(streams, []);
     assert.ok(finished, 'getStreams answered while a request was still running');
 
-    // German dub first, then German subtitles, then the rest; huhu.to files "…GerSub…" under plain German
-    api.fileNames['https://v/2'] = 'KonoSuba E01 GerSub AC3 720p BluRay x264-Fuuko';
-    api.fileNames['https://v/5'] = 'KonoSuba E01 German AC3 720p BluRay x264-Fuuko';
+    // German dub first, then German subtitles, then the rest
     const named = await provider(async () => [
         { name: 'X', title: 'voe.sx · Ger-Sub', url: 'https://v/1' },
         { name: 'X', title: 'voe.sx · DE', url: 'https://v/2' },
@@ -88,10 +86,16 @@ assert.deepStrictEqual(safeHeaders({ 'X-Ok': '1', 'Bad\nKey': 'x', 'Y-Drop': 'a\
         { name: 'X', title: 'voe.sx · Englisch', url: 'https://v/4' },
         { name: 'X', title: 'voe.sx · Deutsch', url: 'https://v/5' },
     ]).getStreams('1', 'tv', 1, 1);
-    assert.deepStrictEqual(named.map(s => s.name), ['X · Deutsch · voe.sx', 'X · Original, dt. UT · voe.sx', 'X · Original, dt. UT · voe.sx',
+    assert.deepStrictEqual(named.map(s => s.name), ['X · Deutsch · voe.sx', 'X · Deutsch · voe.sx', 'X · Original, dt. UT · voe.sx',
         'X · Japanisch, dt. UT · voe.sx', 'X · Englisch · voe.sx']);
-    assert.deepStrictEqual(named.map(s => s.url.slice(-1)), ['5', '1', '2', '3', '4']);
-    assert.strictEqual(named[2].title, 'voe.sx · Original, dt. UT');
+    assert.deepStrictEqual(named.map(s => s.url.slice(-1)), ['2', '5', '1', '3', '4']);
+
+    // huhu.to files "…GerSub.720p…" under plain German: the file name wins over the title, and gives the quality
+    api.fileNames['https://v/1'] = 'KonoSuba E01 GerSub AC3 720p BluRay x264-Fuuko';
+    const sub = await provider(async () => [{ name: 'X', title: 'voe.sx · Deutsch', url: 'https://v/1' }]).getStreams('1', 'tv', 1, 1);
+    assert.strictEqual(sub[0].name, 'X · Original, dt. UT · voe.sx');
+    assert.strictEqual(sub[0].title, 'voe.sx · Original, dt. UT');
+    assert.strictEqual(sub[0].quality, '720p');
 
     // Dood only ever answers with a Cloudflare challenge, so it must not cost a request
     let asked = 0;
@@ -153,18 +157,23 @@ assert.deepStrictEqual(safeHeaders({ 'X-Ok': '1', 'Bad\nKey': 'x', 'Y-Drop': 'a\
     };
     const labelled = await provider(async (tmdbId, mediaType) => {
         const meta = await getMeta(tmdbId, mediaType);
+        api.fileNames['https://cdn.example/e.mp4'] = 'Kingdom S01E01 1080p AAC';
+        api.fileNames['https://cdn.example/f.mp4'] = 'Kingdom S01E01 1080p AC3';
         return [
             { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'https://cdn.example/a.m3u8', quality: 'auto', mediaTitle: meta.title, year: 2019 },
             { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'https://cdn.example/b.mp4', quality: '1080p', mediaTitle: meta.title, year: 2019 },
             { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'https://cdn.example/c.mp4', quality: '720p', mediaTitle: 'Kingdom', year: 2014 },
             { name: 'Serienstream', title: 'voe.sx · Englisch', url: 'https://cdn.example/d.mp4', quality: '720p', mediaTitle: meta.title, year: 2019, headers: { 'X-Ok': '1', 'Bad\nKey': 'x' } },
             { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'javascript:alert(1)', mediaTitle: meta.title, year: 2019 },
+            { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'https://cdn.example/e.mp4', quality: 'auto', mediaTitle: meta.title, year: 2019 },
+            { name: 'Serienstream', title: 'voe.sx · Deutsch', url: 'https://cdn.example/f.mp4', quality: 'auto', mediaTitle: meta.title, year: 2019 },
         ];
     }).getStreams('500', 'tv', 1, 1);
-    assert.deepStrictEqual(labelled.map(s => s.url.split('/').pop()), ['b.mp4', 'a.m3u8', 'd.mp4']);
-    assert.deepStrictEqual(labelled.map(s => s.quality), ['1080p', 'HLS', '720p']);
+    // best resolution first, then the better audio (the hoster file name says 1080p AC3, the URL only "auto")
+    assert.deepStrictEqual(labelled.map(s => s.url.split('/').pop()), ['f.mp4', 'e.mp4', 'b.mp4', 'a.m3u8', 'd.mp4']);
+    assert.deepStrictEqual(labelled.map(s => s.quality), ['1080p', '1080p', '1080p', 'HLS', '720p']);
     assert.strictEqual(labelled[0].name, 'Serienstream · Kingdom (2019) · Deutsch · voe.sx');
-    assert.deepStrictEqual(labelled[2].headers, { 'X-Ok': '1' });
+    assert.deepStrictEqual(labelled[4].headers, { 'X-Ok': '1' });
 
     // --- same title, different production: the IMDb id and the year decide
     const kingdom = { titles: ['Kingdom'], year: 2019, imdbId: 'tt8010022' };
